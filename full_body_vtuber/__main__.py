@@ -12,6 +12,7 @@ parser.add_argument("-b", "--camera-backend", help="what virtual camera backend 
 parser.add_argument("-o", "--overlay", help="if enabled, displays the character over the camera image instead of drawing on a new canvas", action="store_true")
 parser.add_argument("-dl", "--debug-landmarks", help="draws some landmarks that are useful for debugging", action="store_true")
 parser.add_argument("-df", "--disable-filling", help="disables filling of drawn shapes", action="store_true")
+parser.add_argument("-fi" "--fake-image", help="instead of camera frames, process a fake image of a standing person", action="store_true", dest="fake_image")
 
 args = parser.parse_args()
 
@@ -36,10 +37,22 @@ def distance(landmark1, landmark2):
 def to_coords(landmark):
     return (landmark.x * width, landmark.y * height)
 
+def extend(x1, y1, x2, y2, factor):
+    x3 = x1 + (x2 - x1) * factor
+    y3 = y1 + (y2 - y1) * factor
+    x4 = x2 - (x2 - x1) * factor
+    y4 = y2 - (y2 - y1) * factor
+    return ((x3, y3), (x4, y4))
+
+if args.fake_image:
+    fake_image = numpy.asarray(Image.open("fake_image.jpeg").resize((width, height)))
+
 with Camera(width=width, height=height, fps=60, device=args.device, backend=args.camera_backend) as camera:
     with pose.Pose() as pose_recognizer:
         while video_capture.isOpened():
             is_success, frame = video_capture.read()
+            if args.fake_image:
+                frame = fake_image
             if not is_success:
                 break
             frame.flags.writeable = False # Makes it faster, from what I've heard
@@ -64,23 +77,26 @@ with Camera(width=width, height=height, fps=60, device=args.device, backend=args
                     debug_landmark(pose.PoseLandmark.NOSE)
                     debug_landmark(pose.PoseLandmark.RIGHT_EAR)
                     debug_landmark(pose.PoseLandmark.LEFT_EAR)
-                head = landmarks[pose.PoseLandmark.NOSE]
+                    debug_landmark(pose.PoseLandmark.LEFT_HIP)
+                    debug_landmark(pose.PoseLandmark.RIGHT_HIP)
+                nose = to_coords(landmarks[pose.PoseLandmark.NOSE])
                 head_width = distance(landmarks[pose.PoseLandmark.LEFT_EAR], landmarks[pose.PoseLandmark.RIGHT_EAR])
                 head_radius = head_width / 2
                 head_radius *= 2 # Making the head bigger
                 between_shoulders = midpoint(landmarks[pose.PoseLandmark.LEFT_SHOULDER], landmarks[pose.PoseLandmark.RIGHT_SHOULDER])
                 left_hip = to_coords(landmarks[pose.PoseLandmark.LEFT_HIP])
                 right_hip = to_coords(landmarks[pose.PoseLandmark.RIGHT_HIP])
+                left_hip, right_hip = extend(*left_hip, *right_hip, 1.5)
                 draw.polygon( # TORSO
-                    (left_hip, right_hip, between_shoulders),
+                    (left_hip, right_hip, nose),
                     outline=OUTLINE, fill=FILL, width=LINE_WIDTH
                 )
                 draw.ellipse( # HEAD
                     (
-                        width * head.x - head_radius,
-                        height * head.y - head_radius,
-                        width * head.x + head_radius,
-                        height * head.y + head_radius,
+                        nose[0] - head_radius,
+                        nose[1] - head_radius,
+                        nose[0] + head_radius,
+                        nose[1] + head_radius,
                     ), outline=OUTLINE, fill=FILL, width=LINE_WIDTH
                 )
                 camera.send(numpy.asarray(image))
