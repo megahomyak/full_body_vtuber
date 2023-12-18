@@ -28,8 +28,8 @@ height = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
 LINE_WIDTH = 20
 
-def midpoint(landmark1, landmark2):
-    return ((landmark1.x + landmark2.x) / 2 * width, (landmark1.y + landmark2.y) / 2 * height)
+def midpoint(x1, y1, x2, y2):
+    return ((x1 + x2) / 2, (y1 + y2) / 2)
 
 def distance(x1, y1, x2, y2):
     return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
@@ -59,6 +59,10 @@ with Camera(width=width, height=height, fps=int(video_capture.get(cv2.CAP_PROP_F
             output = pose_recognizer.process(frame)
             if output.pose_landmarks is not None:
                 landmarks = output.pose_landmarks.landmark
+
+                def landmark(index):
+                    return to_coords(landmarks[index])
+
                 if args.overlay:
                     if not args.fake_image:
                         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -68,7 +72,7 @@ with Camera(width=width, height=height, fps=int(video_capture.get(cv2.CAP_PROP_F
                 draw = ImageDraw.ImageDraw(image)
                 if args.debug_landmarks:
                     def debug_landmark(landmark_index):
-                        x, y = to_coords(landmarks[landmark_index])
+                        x, y = landmark(landmark_index)
                         LANDMARK_RADIUS = 5
                         draw.ellipse(
                             (x - LANDMARK_RADIUS, y - LANDMARK_RADIUS, x + LANDMARK_RADIUS, y + LANDMARK_RADIUS),
@@ -81,20 +85,20 @@ with Camera(width=width, height=height, fps=int(video_capture.get(cv2.CAP_PROP_F
                     debug_landmark(pose.PoseLandmark.LEFT_EAR)
                     debug_landmark(pose.PoseLandmark.LEFT_HIP)
                     debug_landmark(pose.PoseLandmark.RIGHT_HIP)
-                nose = to_coords(landmarks[pose.PoseLandmark.NOSE])
-                head_width = distance(
-                    *to_coords(landmarks[pose.PoseLandmark.LEFT_EAR]),
-                    *to_coords(landmarks[pose.PoseLandmark.RIGHT_EAR])
+                nose = landmark(pose.PoseLandmark.NOSE)
+                between_shoulders = midpoint(
+                    *landmark(pose.PoseLandmark.RIGHT_SHOULDER),
+                    *landmark(pose.PoseLandmark.LEFT_SHOULDER),
                 )
+                head_width = distance(*between_shoulders, *nose)
                 head_radius = head_width / 2
-                head_radius *= 2 # Making the head bigger
-                left_hip = to_coords(landmarks[pose.PoseLandmark.LEFT_HIP])
-                right_hip = to_coords(landmarks[pose.PoseLandmark.RIGHT_HIP])
+                left_hip = landmark(pose.PoseLandmark.LEFT_HIP)
+                right_hip = landmark(pose.PoseLandmark.RIGHT_HIP)
                 left_hip, right_hip = extend(*left_hip, *right_hip, 1.5)
                 hip_distance = distance(*left_hip, *right_hip)
-                left_wrist = to_coords(landmarks[pose.PoseLandmark.LEFT_WRIST])
+                left_wrist = landmark(pose.PoseLandmark.LEFT_WRIST)
                 #hand_distance = distance(*left_wrist, *to_coords(landmarks[pose.PoseLandmark.]))
-                right_wrist = to_coords(landmarks[pose.PoseLandmark.RIGHT_WRIST])
+                right_wrist = landmark(pose.PoseLandmark.RIGHT_WRIST)
                 draw.polygon( # TORSO
                     (left_hip, right_hip, nose),
                     outline=OUTLINE, fill=FILL, width=LINE_WIDTH
